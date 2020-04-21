@@ -1,0 +1,22 @@
+name: zrb-build
+
+on:
+  push:
+    branches: [ master ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - uses: actions/checkout@v2
+    
+    # setup bazel
+    - name: Setup Bazel
+      uses: abhinavsingh/setup-bazel@v3
+
+    - name: Install Dependencies
+      run: sudo sh install_dependencies.sh
+
+    # build client and server
+    - name: Build
+      run: sudo sh build.sh

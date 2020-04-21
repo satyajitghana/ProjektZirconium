@@ -6,7 +6,7 @@ wget https://github.com/mongodb/mongo-c-driver/releases/download/1.17.0-beta/mon
 # install ssl, important
 sudo apt install -y libssl-dev libsasl2-dev
 tar xvf mongo-c-driver-1.17.0-beta.tar.gz
-cd mongo-c-driver-1.17.0-beta/ build && cmake -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF .. && make -j8 && sudo make install
+cd mongo-c-driver-1.17.0-beta/build && cmake -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF .. && make -j8 && sudo make install
 
 # install mongo-cxx driver
 

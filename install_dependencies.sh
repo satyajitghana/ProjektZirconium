@@ -4,7 +4,7 @@
 
 wget https://github.com/mongodb/mongo-c-driver/releases/download/1.17.0-beta/mongo-c-driver-1.17.0-beta.tar.gz
 # install ssl, important
-sudo apt install libssl-dev libsasl2-dev
+sudo apt install -y libssl-dev libsasl2-dev
 tar xvf mongo-c-driver-1.17.0-beta.tar.gz
 cd mongo-c-driver-1.17.0-beta/
 cd build

@@ -6,6 +6,16 @@
 
 # A high performance Server and Client using gRPC and MongoDB
 
+## Status ⌚
+
+![zrb-build](https://github.com/satyajitghana/ProjektZirconium/workflows/zrb-build/badge.svg?branch=master)
+
+![language-count](https://img.shields.io/github/languages/count/satyajitghana/ProjektZirconium)
+![top-language](https://img.shields.io/github/languages/top/satyajitghana/ProjektZirconium)
+![repo-size](https://img.shields.io/github/repo-size/satyajitghana/ProjektZirconium)
+![loc-count](https://sloc.xyz/github/satyajitghana/ProjektZirconium)
+![license](https://img.shields.io/github/license/satyajitghana/ProjektZirconium)
+![maintainer](https://img.shields.io/badge/maintainer-shadowleaf-blue)
 
 ## Tech Stack 🧠
 

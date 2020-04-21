@@ -51,9 +51,27 @@ $ ./a.out
 sudo sh build.sh
 ```
 
-## NOTES
+## Running
 
-You can run using
-```bazel run //:zirconium_client -- --username=meow --pin=123456 --deposit=10```
+1. create a replica set in mongo
 
-the  ``--`` separates the program args from bazel args
+```shell
+$ mongod --dbpath /data/db --replSet "rs0"
+```
+
+2. open a mongo shell and initiate the replica set
+```
+rs.initiate()
+```
+
+3. start the server
+```shell
+$ bazel run //server:zirconium_server --       
+```
+
+
+4. start the client
+
+```shell
+$ bazel run //:zirconium_client -- --username=meow --pin=123456 --deposit=10
+```

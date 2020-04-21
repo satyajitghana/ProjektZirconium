@@ -11,6 +11,7 @@
 #include <mongocxx/client.hpp>
 #include <mongocxx/exception/operation_exception.hpp>
 #include <mongocxx/instance.hpp>
+#include <mongocxx/pool.hpp>
 #include <mongocxx/stdx.hpp>
 #include <mongocxx/uri.hpp>
 #include <stdexcept>
@@ -50,11 +51,14 @@ class WebServiceImpl final : public WebService::Service {
      * BalanceEnquiry: Gets the balance of a AuthUser
     */
     Status BalanceEnquiry(ServerContext* context, const AuthUser* auth_user, Balance* balance) override {
+        // get a client from the pool
+        auto client = conn_pool_->acquire();
+
         // log the auth data from the request
         logAuthData_(auth_user->username(), auth_user->pin());
 
         // check if the user is authenticated and also fetch the document
-        auto [is_authenticated, user] = getAuthData_(auth_user->username(), auth_user->pin());
+        auto [is_authenticated, user] = getAuthData_(auth_user->username(), auth_user->pin(), *(client));
 
         if (not is_authenticated) {
             LOG_S(WARNING) << "UNAUTHENTICATED User: " << auth_user->username();
@@ -73,18 +77,19 @@ class WebServiceImpl final : public WebService::Service {
      * Tested Works ✅
     */
     Status UpdateAmount(ServerContext* context, const RequestAmount* update_req, Balance* balance) override {
-        LOG_S(INFO) << "Server Thread [ " << std::this_thread::get_id() << " ] UpdateAmount called by peer: " << context->peer();
+        LOG_S(INFO) << "UpdateAmount called by peer: " << context->peer();
+
+        // get a client from the pool
+        auto client = conn_pool_->acquire();
+
+        // get the "zirconium" db
+        auto db = (*client)["zirconium"];
 
         const auto auth_user = update_req->user();
-
         logAuthData_(auth_user.username(), auth_user.pin());
 
-        auto [is_authenticated, user] = getAuthData_(auth_user.username(), auth_user.pin());
-
-        return Status::OK;
-
         try {
-            auto [is_authenticated, user] = getAuthData_(auth_user.username(), auth_user.pin());
+            auto [is_authenticated, user] = getAuthData_(auth_user.username(), auth_user.pin(), (*client));
 
             if (not is_authenticated) {
                 LOG_S(WARNING) << "UNAUTHENTICATED User: " << auth_user.username();
@@ -94,21 +99,8 @@ class WebServiceImpl final : public WebService::Service {
             // the user is authenticated
 
             auto update_user_amount = [&](mongocxx::client_session& session) {
-                mongocxx::options::transaction txn_opts;
-
-                // read and write concerns and read preference
-                mongocxx::write_concern wc_majority{};
-                wc_majority.acknowledge_level(mongocxx::write_concern::level::k_majority);
-
-                mongocxx::read_concern rc_local{};
-                rc_local.acknowledge_level(mongocxx::read_concern::level::k_local);
-
-                mongocxx::read_preference rp_primary{};
-                rp_primary.mode(mongocxx::read_preference::read_mode::k_primary);
-
-                txn_opts.write_concern(wc_majority);
-                txn_opts.read_concern(rc_local);
-                txn_opts.read_preference(rp_primary);
+                // get the transaction options
+                auto txn_opts = zirconium::transaction_mgr::get_transaction_opts();
 
                 // initiate the transaction
                 session.start_transaction(txn_opts);
@@ -119,7 +111,7 @@ class WebServiceImpl final : public WebService::Service {
                 // try the transaction
                 try {
                     // read fuser value from db
-                    auto curr_user = db_["bank"].find_one(user->view());
+                    auto curr_user = db["bank"].find_one(session, make_document(kvp("username", auth_user.username())));
                     auto curr_user_balance = curr_user->view()["balance"].get_int32().value;
 
                     // guard to check if from_user has necessary balance
@@ -129,15 +121,12 @@ class WebServiceImpl final : public WebService::Service {
                     }
 
                     // increment/decrement the balance of user
-                    auto result = db_["bank"].find_one_and_update(
-                        user->view(),
+                    updated_user = db["bank"].find_one_and_update(
+                        session,
+                        curr_user->view(),
                         make_document(
                             kvp("$inc", make_document(kvp("balance", update_req->value())))),
-                        mongocxx::options::find_one_and_update());
-
-                    // fix this, don't do this fix above to return the updated document
-                    // get the updated document
-                    updated_user = db_["bank"].find_one(make_document(kvp("username", auth_user.username())));
+                        mongocxx::options::find_one_and_update().return_document(mongocxx::options::return_document::k_after));
 
                     // set the new balance as responce
                     balance->set_value(updated_user->view()["balance"].get_int32());
@@ -152,7 +141,7 @@ class WebServiceImpl final : public WebService::Service {
                     LOG_S(INFO) << "UPDATED: " << bsoncxx::to_json(*updated_user) << "\n";
                     auto update_type = update_req->value() >= 0 ? "credited" : "debited";
 
-                    LOG_S(INFO) << "UpdateAmount [ Account " << user->view()["username"].get_utf8().value.to_string() << " " << update_type << " with ₹ " << std::abs(update_req->value()) << " new balance: " << updated_user->view()["balance"].get_int32() << " ]";
+                    LOG_S(INFO) << "UpdateAmount [ Account " << updated_user->view()["username"].get_utf8().value.to_string() << " " << update_type << " with ₹ " << std::abs(update_req->value()) << " new balance: " << updated_user->view()["balance"].get_int32() << " ]";
                 };
 
                 // commit the transaction and retry if failure
@@ -160,7 +149,7 @@ class WebServiceImpl final : public WebService::Service {
             };
 
             // create a session and start a transaction
-            auto session = client_.start_session();
+            auto session = (*client).start_session();
 
             try {
                 zirconium::transaction_mgr::run_transaction_with_retry(update_user_amount, session);
@@ -179,8 +168,18 @@ class WebServiceImpl final : public WebService::Service {
         return Status::OK;
     }
 
+    /**
+     * Transfer Amount: Transfer amount from current user to to_user
+     * Tested Works ✅
+    */
     Status TransferAmount(ServerContext* context, const TransferReq* transfer_req, Balance* balance) override {
-        LOG_S(INFO) << "Server Thread [ " << std::this_thread::get_id() << " ] TransferAmount called by peer: " << context->peer();
+        LOG_S(INFO) << "TransferAmount called by peer: " << context->peer();
+
+        // get a client from the pool
+        auto client = conn_pool_->acquire();
+
+        // get the "zirconium" db
+        auto db = (*client)["zirconium"];
 
         // curr_user
         const auto auth_user = transfer_req->from_user();
@@ -193,10 +192,8 @@ class WebServiceImpl final : public WebService::Service {
 
         logAuthData_(auth_user.username(), auth_user.pin());
 
-        return Status::OK;
-
         try {
-            auto [is_authenticated, user] = getAuthData_(auth_user.username(), auth_user.pin());
+            auto [is_authenticated, user] = getAuthData_(auth_user.username(), auth_user.pin(), (*client));
 
             // check if the user is authenticated
             if (not is_authenticated) {
@@ -208,21 +205,8 @@ class WebServiceImpl final : public WebService::Service {
 
             // transaction function
             auto transfer_user_amount = [&](mongocxx::client_session& session) {
-                mongocxx::options::transaction txn_opts;
-
-                // read and write concerns and read preference
-                mongocxx::write_concern wc_majority{};
-                wc_majority.acknowledge_level(mongocxx::write_concern::level::k_majority);
-
-                mongocxx::read_concern rc_local{};
-                rc_local.acknowledge_level(mongocxx::read_concern::level::k_local);
-
-                mongocxx::read_preference rp_primary{};
-                rp_primary.mode(mongocxx::read_preference::read_mode::k_primary);
-
-                txn_opts.write_concern(wc_majority);
-                txn_opts.read_concern(rc_local);
-                txn_opts.read_preference(rp_primary);
+                // get the transaction options
+                auto txn_opts = zirconium::transaction_mgr::get_transaction_opts();
 
                 // initiate the transaction
                 session.start_transaction(txn_opts);
@@ -233,7 +217,7 @@ class WebServiceImpl final : public WebService::Service {
                 // try the transaction
                 try {
                     // read to_user value from db
-                    auto curr_to_user = db_["bank"].find_one(make_document(kvp("username", to_user)));
+                    auto curr_to_user = db["bank"].find_one(session, make_document(kvp("username", to_user)));
 
                     // this is unnecessary, can be ommited
                     if (not curr_to_user) {
@@ -242,7 +226,7 @@ class WebServiceImpl final : public WebService::Service {
                     }
 
                     // read from_user value from db
-                    auto curr_from_user = db_["bank"].find_one(user->view());
+                    auto curr_from_user = db["bank"].find_one(session, make_document(kvp("username", auth_user.username())));
                     auto curr_from_user_balance = curr_from_user->view()["balance"].get_int32().value;
 
                     // guard to check if from_user has necessary balance
@@ -252,24 +236,22 @@ class WebServiceImpl final : public WebService::Service {
                     }
 
                     // decrement the balance of from_user
-                    db_["bank"].find_one_and_update(
+                    updated_from_user = db["bank"].find_one_and_update(
+                        session,
                         curr_from_user->view(),
                         make_document(
                             kvp("$inc", make_document(
                                             kvp("balance", -transfer_req->amount())))),
-                        mongocxx::options::find_one_and_update());
+                        mongocxx::options::find_one_and_update().return_document(mongocxx::options::return_document::k_after));
 
                     // increment the balance of to_user
-                    db_["bank"].find_one_and_update(
+                    db["bank"].find_one_and_update(
+                        session,
                         curr_to_user->view(),
                         make_document(
                             kvp("$inc", make_document(
                                             kvp("balance", transfer_req->amount())))),
                         mongocxx::options::find_one_and_update());
-
-                    // fix this, don't do this fix above to return the updated document
-                    // get the updated document
-                    updated_from_user = db_["bank"].find_one(make_document(kvp("username", auth_user.username())));
 
                     // set the new balance as responce
                     balance->set_value(updated_from_user->view()["balance"].get_int32());
@@ -287,7 +269,7 @@ class WebServiceImpl final : public WebService::Service {
                     LOG_S(INFO) << "UPDATED: " << bsoncxx::to_json(*updated_from_user) << "\n";
                     auto update_type = transfer_req->amount() >= 0 ? "credited" : "debited";
 
-                    LOG_S(INFO) << "UpdateAmount [ Account " << user->view()["username"].get_utf8().value.to_string() << " " << update_type << " with ₹ " << std::abs(transfer_req->amount()) << " new balance: " << updated_from_user->view()["balance"].get_int32() << " ]";
+                    LOG_S(INFO) << "UpdateAmount [ Account " << updated_from_user->view()["username"].get_utf8().value.to_string() << " " << update_type << " with ₹ " << std::abs(transfer_req->amount()) << " new balance: " << updated_from_user->view()["balance"].get_int32() << " ]";
                 };
 
                 // commit the transaction and retry if failure
@@ -295,7 +277,7 @@ class WebServiceImpl final : public WebService::Service {
             };
 
             // create a session and start a transaction
-            auto session = client_.start_session();
+            auto session = client->start_session();
 
             try {
                 zirconium::transaction_mgr::run_transaction_with_retry(transfer_user_amount, session);
@@ -304,11 +286,15 @@ class WebServiceImpl final : public WebService::Service {
                 LOG_S(ERROR) << "Error during commit: " << oe.what() << ", for session: " << bsoncxx::to_json(session.id());
             }
         } catch (zirconium::exception& ex) {
+
             LOG_S(ERROR) << "Precondition failed: " << ex.what();
             return Status(StatusCode::FAILED_PRECONDITION, ex.what());
+
         } catch (const std::exception& ex) {
+
             LOG_S(ERROR) << "Internal Server Error: " << ex.what();
             return Status(StatusCode::INTERNAL, "Internal Server Error, Cannot Transfer Amount");
+
         } catch (...) {
             // something notorious has happened if you reach here
             // stop the server
@@ -319,25 +305,25 @@ class WebServiceImpl final : public WebService::Service {
     }
 
    public:
-    void initiaize(mongocxx::client&& client) {
-        client_ = std::move(client);
-        db_ = client_["zirconium"];
+    void initiaize(const std::string& mongo_uri) {
+        conn_pool_ = std::make_unique<mongocxx::pool>(mongocxx::uri{mongo_uri});
     };
 
    private:
-    mongocxx::database db_;
-    mongocxx::client client_;
+    std::unique_ptr<mongocxx::pool> conn_pool_;
 
     void logAuthData_(std::string user, std::string pin) {
         LOG_S(INFO) << "Received AuthUser: [ username: " << user << ", pin: " << pin << " ]";
     }
 
-    std::tuple<bool, bsoncxx::stdx::optional<bsoncxx::document::value>> getAuthData_(std::string username, std::string pin) {
+    std::tuple<bool, bsoncxx::stdx::optional<bsoncxx::document::value>> getAuthData_(std::string username, std::string pin, mongocxx::client& client) {
+        auto db = client["zirconium"];
+
         bool is_authenticated = false;
-        bsoncxx::stdx::optional<bsoncxx::document::value> user = db_["bank"].find_one(document{} << "username" << username << finalize);
+        bsoncxx::stdx::optional<bsoncxx::document::value> user = db["bank"].find_one(document{} << "username" << username << finalize);
 
         if (user) {
-            LOG_S(INFO) << "FOUND USER FROM DB: " << bsoncxx::to_json(*user);
+            LOG_S(INFO) << "Found User from DB: " << bsoncxx::to_json(*user);
             if (pin == user->view()["pin"].get_utf8().value.to_string()) {
                 is_authenticated = true;
             }
@@ -349,11 +335,11 @@ class WebServiceImpl final : public WebService::Service {
     }
 };
 
-void RunServer(const std::string& server_addr, mongocxx::client&& client) {
+void RunServer(const std::string& server_addr, const std::string& mongo_uri) {
     WebServiceImpl service;
 
     // initialize the service with mongo db name "zirconium"
-    service.initiaize(std::move(client));
+    service.initiaize(mongo_uri);
 
     ServerBuilder builder;
 
@@ -375,27 +361,22 @@ void RunServer(const std::string& server_addr, mongocxx::client&& client) {
 
 int main(int argc, char* argv[]) {
     // turn off the printing thread info in the output
-    loguru::g_preamble_thread = false;
+    // loguru::g_preamble_thread = false;
 
     // turn off the uptime in the output
     loguru::g_preamble_uptime = false;
 
     // instantiate the mongo connection
     mongocxx::instance instance{};  // This should be done only once.
-    mongocxx::uri uri("mongodb://localhost:27017");
-    mongocxx::client client(uri);
+    std::string mongo_addr("mongodb://localhost:27017/?replicaSet=rs0");
 
-    if (not client) {
-        LOG_S(FATAL) << "Couldn't connect to DB !";
-        return EXIT_FAILURE;
-    } else {
-        LOG_S(INFO) << "Connected to DB: "
-                    << "mongodb://localhost:27017";
-    }
+    // create a pool
+    // mongocxx::pool pool{uri};
 
     std::string server_addr("0.0.0.0:50051");
 
-    RunServer(server_addr, std::move(client));
+    // run the server with the pool
+    RunServer(server_addr, mongo_addr);
 
     return 0;
 }

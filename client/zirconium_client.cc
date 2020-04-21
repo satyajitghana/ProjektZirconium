@@ -3,12 +3,13 @@
 #define LOGURU_WITH_STREAMS 1
 
 #include <grpcpp/grpcpp.h>
-#include "protos/zirconiumbank.grpc.pb.h"
 
 #include <iostream>
 #include <memory>
 #include <sstream>
 #include <string>
+
+#include "protos/zirconiumbank.grpc.pb.h"
 #include "utils/cxxopts.hpp"
 #include "utils/loguru.hpp"
 
@@ -53,8 +54,8 @@ class ZirconiumClient {
 
         LOG_IF_S(WARNING, update_amt == 0) << "update amount = 0";
 
-        LOG_IF_S(WARNING, update_amt < 0) << "Debit Req of Amount: " << update_amt;
-        LOG_IF_S(WARNING, update_amt > 0) << "Credit Req of Amount: " << update_amt;
+        LOG_IF_S(WARNING, update_amt < 0) << "Debit Req of Amount: " << update_amt << " by user: " << user;
+        LOG_IF_S(WARNING, update_amt > 0) << "Credit Req of Amount: " << update_amt << " by user: " << user;
 
         // create the request payload
         update_amt_req.mutable_user()->set_username(user);
@@ -82,7 +83,7 @@ class ZirconiumClient {
         }
 
         LOG_IF_S(WARNING, trans_amt == 0) << "transfer amount = 0";
-        LOG_IF_S(WARNING, trans_amt > 0) << "Transfer Req of Amount: " << trans_amt;
+        LOG_IF_S(WARNING, trans_amt > 0) << "Transfer Req of Amount: " << trans_amt << " by user: " << user;
 
         trans_amt_req.mutable_from_user()->set_username(user);
         trans_amt_req.mutable_from_user()->set_pin(pin);
@@ -125,7 +126,7 @@ class ZirconiumClient {
 
 int main(int argc, char* argv[]) {
     // turn off the printing thread info in the output
-    loguru::g_preamble_thread = false;
+    // loguru::g_preamble_thread = false;
 
     // turn off the uptime in the output
     loguru::g_preamble_uptime = false;

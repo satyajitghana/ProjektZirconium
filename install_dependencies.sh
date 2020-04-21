@@ -6,20 +6,13 @@ wget https://github.com/mongodb/mongo-c-driver/releases/download/1.17.0-beta/mon
 # install ssl, important
 sudo apt install -y libssl-dev libsasl2-dev
 tar xvf mongo-c-driver-1.17.0-beta.tar.gz
-cd mongo-c-driver-1.17.0-beta/
-cd build
-cmake -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF ..
-make -j8 && sudo make install
+cd mongo-c-driver-1.17.0-beta/ build && cmake -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF .. && make -j8 && sudo make install
 
 # install mongo-cxx driver
 
 curl -OL https://github.com/mongodb/mongo-cxx-driver/releases/download/r3.5.0/mongo-cxx-driver-r3.5.0.tar.gz
-tar xvf r3.5.0.tar.gz
-cd mongo-cxx-driver-r3.5.0
-cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local
-sudo make EP_mnmlstc_core
-make -j8 && sudo make install
+tar xvf mongo-cxx-driver-r3.5.0.tar.gz
+cd mongo-cxx-driver-r3.5.0/build && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && sudo make EP_mnmlstc_core && make -j8 && sudo make install
 
 # install mongodb
 wget -qO - https://www.mongodb.org/static/pgp/server-4.2.asc | sudo apt-key add -

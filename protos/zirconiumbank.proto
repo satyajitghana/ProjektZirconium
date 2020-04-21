@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+// ZirconiumBank (ZrB)
+
+/* The User can requestt for the following from the server
+ * 1. Update Amount
+ * 2. Transfer Amount
+ * 3. Balance Enquiry
+ * */
+
+/* The Request should always contain
+ * 1. Username
+ * 2. 6-digit PIN
+ * */
+
+ // The C++ namesapce will be zirconium::bank
+package zirconium.bank;
+
+// Interface exported by the server
+service WebService {
+    rpc UpdateAmount(RequestAmount) returns (Balance) {}
+    rpc BalanceEnquiry(AuthUser) returns (Balance) {}
+    rpc TransferAmount(TransferReq) returns (Balance) {}
+}
+
+message TransferReq {
+    AuthUser from_user = 1;
+    string to_user = 2;
+    int32 amount = 3;
+}
+
+message AuthUser {
+    string username = 1;
+    string pin = 2;
+}
+
+message RequestAmount {
+    AuthUser user = 1;
+    int32 value = 2;
+}
+
+message Balance {
+    int32 value = 1;
+}

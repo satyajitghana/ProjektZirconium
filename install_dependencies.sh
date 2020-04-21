@@ -29,9 +29,3 @@ mkdir /data/db
 sudo chmod -R go+w /data/db
 # sudo service mongodb restart
 # start the service by: mongod --dbpath /data/db
-
-# install bazel
-sudo apt install curl
-curl https://bazel.build/bazel-release.pub.gpg | sudo apt-key add -
-echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
-sudo apt update && sudo apt install bazel

@@ -1,6 +1,8 @@
 # add rules_proto_grpc to this WORKSPACE
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+
 http_archive(
     name = "rules_proto_grpc",
     sha256 = "497225bb586e8f587e139c55b0f015e93bdddfd81902985ce24623528dbe31ab",
@@ -41,4 +43,11 @@ new_local_repository(
     name = "mongocxx",
     build_file = "mongocxx.BUILD",
     path = "/usr/local",
+)
+
+# google tests
+git_repository(
+    name = "gtest",
+    remote = "https://github.com/google/googletest",
+    branch = "release-1.8.1",
 )

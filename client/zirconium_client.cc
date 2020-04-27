@@ -12,6 +12,7 @@
 #include "protos/zirconiumbank.grpc.pb.h"
 #include "utils/cxxopts.hpp"
 #include "utils/loguru.hpp"
+#include "utils/zirconium_utils.hpp"
 
 // gRPC namespaces
 using grpc::Channel;
@@ -131,13 +132,6 @@ int main(int argc, char* argv[]) {
     // turn off the uptime in the output
     loguru::g_preamble_uptime = false;
 
-    // Instantiate the client. It requires a channel, out of which the actual RPCs
-    // are created. This channel models a connection to an endpoint (in this case,
-    // localhost at port 50051). We indicate that the channel isn't authenticated
-    // (use of InsecureChannelCredentials()).
-    std::string server_addr("localhost:50051");
-    ZirconiumClient zirconium_bank(grpc::CreateChannel(server_addr, grpc::InsecureChannelCredentials()));
-
     try {
         cxxopts::Options options("zirconium_client", "A client for Zirconium Bank");
 
@@ -146,7 +140,7 @@ int main(int argc, char* argv[]) {
             .show_positional_help();
 
         options.allow_unrecognised_options()
-            .add_options()("username", "username", cxxopts::value<std::string>())("pin", "PIN", cxxopts::value<std::string>())("balance_enquiry", "Balance Enquiry", cxxopts::value<bool>()->implicit_value("false"))("d,debug", "enable debugging")("h,help", "print help");
+            .add_options()("config", "config file", cxxopts::value<std::string>())("username", "username", cxxopts::value<std::string>())("pin", "PIN", cxxopts::value<std::string>())("balance_enquiry", "Balance Enquiry", cxxopts::value<bool>()->implicit_value("false"))("d,debug", "enable debugging")("h,help", "print help");
 
         options.add_options("withdraw", {{"withdraw", "Withdraw a given amount", cxxopts::value<int>()->implicit_value("0")}});
         options.add_options("deposit", {{"deposit", "Deposit a given amount", cxxopts::value<int>()->implicit_value("0")}});
@@ -160,10 +154,29 @@ int main(int argc, char* argv[]) {
             exit(0);
         }
 
+        // check for the config file
+        if (!result.count("config")) {
+            LOG_S(ERROR) << "config file not provided";
+        }
+
+        auto config = zirconium::parse_config(result["config"].as<std::string>());
+
+        // check if the config was provided correctly
+        if (config.find("server_addr") == config.end()) {
+            throw std::runtime_error("config file incorrect, server_addr not found");
+        }
+
+        std::string server_addr(config["server_addr"]);
+
+        // Instantiate the client. It requires a channel, out of which the actual RPCs
+        // are created. This channel models a connection to an endpoint (in this case,
+        // localhost at port 50051). We indicate that the channel isn't authenticated
+        // (use of InsecureChannelCredentials()).
+        ZirconiumClient zirconium_bank(grpc::CreateChannel(server_addr, grpc::InsecureChannelCredentials()));
+
         // check if the username or the pin is not given as argument
         if (!(result.count("username") and result.count("pin"))) {
-            LOG_S(ERROR) << "username or pin not given"
-                         << "\n";
+            LOG_S(ERROR) << "username or pin not given";
             exit(1);
         }
 

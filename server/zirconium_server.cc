@@ -7,6 +7,7 @@
 #include <bsoncxx/builder/stream/document.hpp>
 #include <bsoncxx/json.hpp>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <mongocxx/client.hpp>
 #include <mongocxx/exception/operation_exception.hpp>
@@ -20,7 +21,9 @@
 
 #include "protos/zirconiumbank.grpc.pb.h"
 #include "server/transaction_mgr.hpp"
+#include "utils/cxxopts.hpp"
 #include "utils/loguru.hpp"
+#include "utils/zirconium_utils.hpp"
 
 using bsoncxx::builder::basic::kvp;
 using bsoncxx::builder::basic::make_array;
@@ -286,12 +289,10 @@ class WebServiceImpl final : public WebService::Service {
                 LOG_S(ERROR) << "Error during commit: " << oe.what() << ", for session: " << bsoncxx::to_json(session.id());
             }
         } catch (zirconium::exception& ex) {
-
             LOG_S(ERROR) << "Precondition failed: " << ex.what();
             return Status(StatusCode::FAILED_PRECONDITION, ex.what());
 
         } catch (const std::exception& ex) {
-
             LOG_S(ERROR) << "Internal Server Error: " << ex.what();
             return Status(StatusCode::INTERNAL, "Internal Server Error, Cannot Transfer Amount");
 
@@ -366,14 +367,42 @@ int main(int argc, char* argv[]) {
     // turn off the uptime in the output
     loguru::g_preamble_uptime = false;
 
+    cxxopts::Options options("zirconium_server", "Server for Zirconium Bank");
+
+    options
+        .positional_help("[optional args]")
+        .show_positional_help();
+
+    options
+        .add_options()("config", "config file", cxxopts::value<std::string>())("h,help", "print help");
+
+    auto result = options.parse(argc, argv);
+
+    if (result.count("help")) {
+        std::cout << options.help() << "\n";
+        exit(0);
+    }
+
+    // check for the config file
+    if (!result.count("config")) {
+        LOG_S(ERROR) << "config file not provided";
+    }
+
+    auto config = zirconium::parse_config(result["config"].as<std::string>());
+
+    // check if the config was provided correctly
+    if ((config.find("server_addr") == config.end()) or (config.find("mongo_addr") == config.end())) {
+        throw std::runtime_error("config file incorrect, server_addr or mongo_addr not found");
+    }
+
     // instantiate the mongo connection
     mongocxx::instance instance{};  // This should be done only once.
-    std::string mongo_addr("mongodb://localhost:27017/?replicaSet=rs0");
+    std::string mongo_addr(config["mongo_addr"]);
 
     // create a pool
     // mongocxx::pool pool{uri};
 
-    std::string server_addr("0.0.0.0:50051");
+    std::string server_addr(config["server_addr"]);
 
     // run the server with the pool
     RunServer(server_addr, mongo_addr);

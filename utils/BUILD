@@ -14,3 +14,11 @@ cc_library(
     hdrs = ["loguru.hpp"],
     visibility = ["//visibility:public"],
 )
+
+# zirconium utils library
+cc_library(
+    name = "zirconium_utils",
+    srcs = ["zirconium_utils.hpp"],
+    hdrs = ["zirconium_utils.hpp"],
+    visibility = ["//visibility:public"],
+)

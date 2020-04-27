@@ -14,6 +14,7 @@ cc_binary(
     deps = [
         "//utils:cxxopts",
         "//utils:loguru",
+        "//utils:zirconium_utils",
         "//protos:zirconium_cpp_grpc",
         "@bsoncxx",
         "@mongocxx",

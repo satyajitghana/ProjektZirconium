@@ -109,6 +109,50 @@ $ bazel run //server:zirconium_server --
 $ bazel run //:zirconium_client -- --username=meow --pin=123456 --deposit=10
 ```
 
+## Testing
+
+1. Run Mongod
+
+```shell
+$ mongod --dbpath /data/db --replSet "rs0"
+```
+
+2. Run Mongo Client
+
+```shell
+$ mongo
+```
+
+3. Create a replica set
+```shell
+rs.initiate()
+```
+
+4. Open Mongo Compass and connect to our database
+
+Use this URI
+```shell
+mongodb://localhost:27017/?replicaSet=rs0&readPreference=primary&appname=MongoDB%20Compass&ssl=false
+```
+
+5. Load the data from test_data.json
+
+`ADD DATA -> Import File`
+
+6. Start the server
+
+```shell
+$ ./bazel-bin/server/zirconium_server --config server/server.config
+```
+
+7. Now run test_transactions.sh
+
+Make sure to install `parallel` by `sudo apt install parallel`
+
+```shell
+$ seq 10 | parallel -j 10 --workdir $PWD ./test/test_transactions.sh {}
+```
+
 ----
 
 <h3 align="center">Made with 💘 by shadowleaf</h3>

@@ -1,0 +1,2 @@
+{"_id":{"$oid":"5e9c8b4e0318b2483cd04c54"},"username":"meow","pin":"123456","balance":{"$numberInt":"50000"}}
+{"_id":{"$oid":"5e9e1cbbad425a1d44bc2294"},"username":"shado","pin":"123456","balance":{"$numberInt":"50000"}}

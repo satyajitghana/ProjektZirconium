@@ -22,3 +22,4 @@ mkdir /data/db
 sudo chmod -R go+w /data/db
 # sudo service mongodb restart
 # start the service by: mongod --dbpath /data/db
+echo -e "start the service by: mongod --dbpath /data/db"
